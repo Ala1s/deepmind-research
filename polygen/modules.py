@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """Modules and networks for mesh generation."""
+import numpy as np
 import sonnet as snt
 from tensor2tensor.layers import common_attention
 from tensor2tensor.layers import common_layers
@@ -1090,6 +1091,89 @@ class ImageToVertexModel(VertexModel):
 
     return None, sequential_context_embedding
 
+
+class TextToVertexModel(VertexModel):
+    def __init__(self,
+                 decoder_config,
+                 quantization_bits,
+                 tokenizer=None,
+                 path_to_embeddings = "C:\\Users\\babic\\PycharmProjects\\deepmind-research\\polygen\\glove.6B\\glove.6B.100d.txt",
+                 use_discrete_embeddings=True,
+                 max_num_input_verts=2500,
+                 name='text_to_vertex_model'):
+        """Initializes VoxelToVertexModel.
+
+        Args:
+          decoder_config: Dictionary with TransformerDecoder config.
+          quantization_bits: Number of quantization used in mesh preprocessing.
+          use_discrete_embeddings: If True, use discrete rather than continuous
+            vertex embeddings.
+          max_num_input_verts: Maximum number of vertices. Used for learned position
+            embeddings.
+          name: Name of variable scope
+        """
+        super(TextToVertexModel, self).__init__(
+            decoder_config=decoder_config,
+            quantization_bits=quantization_bits,
+            max_num_input_verts=max_num_input_verts,
+            use_discrete_embeddings=use_discrete_embeddings,
+            name=name)
+
+
+        with self._enter_variable_scope():
+
+            embedding_matrix = self.load_pretrained_embeddings(tokenizer, path_to_embeddings)
+            self.text_features = snt.Sequential([
+                snt.Embed(existing_vocab=embedding_matrix, trainable=False),
+                snt.BatchFlatten(),
+                snt.Linear(512),
+                snt.Linear(512)
+            ])
+
+
+
+    def load_pretrained_embeddings(self, tokenizer, path_to_embeddings):
+
+        embeddings_index = {}
+        with open(path_to_embeddings, 'r', encoding="utf8") as f:
+            for line in f:
+                word, coefs = line.split(maxsplit=1)
+                coefs = np.fromstring(coefs, "f", sep=" ")
+                embeddings_index[word] = coefs
+
+        print("Found %s word vectors." % len(embeddings_index))
+
+        num_tokens = len(tokenizer.word_index) + 2
+        embedding_dim = 100
+        hits = 0
+        misses = 0
+
+        # Prepare embedding matrix
+        embedding_matrix = np.zeros((num_tokens, embedding_dim))
+        for word, i in tokenizer.word_index.items():
+            embedding_vector = embeddings_index.get(word)
+            if embedding_vector is not None:
+                # Words not found in embedding index will be all-zeros.
+                # This includes the representation for "padding" and "OOV"
+                embedding_matrix[i] = embedding_vector
+                hits += 1
+            else:
+                misses += 1
+        print("Converted %d words (%d misses)" % (hits, misses))
+
+        return embedding_matrix
+
+    @snt.reuse_variables
+    def _prepare_context(self, context, is_training=False):
+
+        # Embed binary input voxels
+        text_embeddings = self.text_features(context['text_feature'])
+
+        batch_size = tf.shape(text_embeddings)[0]
+        sequential_context_embedding = tf.reshape(
+            text_embeddings, [batch_size, -1, 512])
+
+        return None, sequential_context_embedding
 
 class VoxelToVertexModel(VertexModel):
   """Generative model of quantized mesh vertices with voxel conditioning.

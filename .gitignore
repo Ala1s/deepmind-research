@@ -1,0 +1,12 @@
+*.zip
+*.msi
+*.exe
+*.obj
+*.csv
+*/__pycache__/
+polygen/glove.6B/
+.idea/
+polygen/03767426/
+polygen/data/
+
+
