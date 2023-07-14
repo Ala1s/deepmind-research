@@ -1100,7 +1100,7 @@ class TextToVertexModel(VertexModel):
                  path_to_embeddings = "C:\\Users\\babic\\PycharmProjects\\deepmind-research\\polygen\\glove.6B\\glove.6B.100d.txt",
                  use_discrete_embeddings=True,
                  max_num_input_verts=2500,
-                 name='text_to_vertex_model'):
+                 name='vertex_model'):
         """Initializes VoxelToVertexModel.
 
         Args:
