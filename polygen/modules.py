@@ -1097,7 +1097,8 @@ class TextToVertexModel(VertexModel):
                  decoder_config,
                  quantization_bits,
                  tokenizer=None,
-                 path_to_embeddings = "C:\\Users\\babic\\PycharmProjects\\deepmind-research\\polygen\\glove.6B\\glove.6B.100d.txt",
+                 path_to_embeddings = "glove.6B/glove.6B.100d.txt",
+                 embedding_dims = 100,
                  use_discrete_embeddings=True,
                  max_num_input_verts=2500,
                  name='vertex_model'):
@@ -1122,7 +1123,7 @@ class TextToVertexModel(VertexModel):
 
         with self._enter_variable_scope():
 
-            embedding_matrix = self.load_pretrained_embeddings(tokenizer, path_to_embeddings)
+            embedding_matrix = self.load_pretrained_embeddings(tokenizer, path_to_embeddings, embedding_dims)
             self.text_features = snt.Sequential([
                 snt.Embed(existing_vocab=embedding_matrix, trainable=False),
                 snt.BatchFlatten(),
@@ -1132,7 +1133,7 @@ class TextToVertexModel(VertexModel):
 
 
 
-    def load_pretrained_embeddings(self, tokenizer, path_to_embeddings):
+    def load_pretrained_embeddings(self, tokenizer, path_to_embeddings, embedding_dim):
 
         embeddings_index = {}
         with open(path_to_embeddings, 'r', encoding="utf8") as f:
@@ -1144,7 +1145,6 @@ class TextToVertexModel(VertexModel):
         print("Found %s word vectors." % len(embeddings_index))
 
         num_tokens = len(tokenizer.word_index) + 2
-        embedding_dim = 100
         hits = 0
         misses = 0
 
