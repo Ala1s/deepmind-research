@@ -1,0 +1,210 @@
+TensorFlow 2.0 Upgrade Script
+-----------------------------
+Converted 6 files
+Detected 19 issues that require attention
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+File: polygen/modules.py
+--------------------------------------------------------------------------------
+polygen/modules.py:213:13: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+polygen/modules.py:216:11: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+polygen/modules.py:338:17: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+polygen/modules.py:340:16: ERROR: tf.nn.dropout called without arguments, so automatic fix was disabled. tf.nn.dropout has changed the semantics of the second argument.
+polygen/modules.py:351:17: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+polygen/modules.py:353:16: ERROR: tf.nn.dropout called without arguments, so automatic fix was disabled. tf.nn.dropout has changed the semantics of the second argument.
+polygen/modules.py:495:17: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+polygen/modules.py:497:16: ERROR: tf.nn.dropout called without arguments, so automatic fix was disabled. tf.nn.dropout has changed the semantics of the second argument.
+polygen/modules.py:517:19: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+polygen/modules.py:519:18: ERROR: tf.nn.dropout called without arguments, so automatic fix was disabled. tf.nn.dropout has changed the semantics of the second argument.
+polygen/modules.py:530:17: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+polygen/modules.py:532:16: ERROR: tf.nn.dropout called without arguments, so automatic fix was disabled. tf.nn.dropout has changed the semantics of the second argument.
+polygen/modules.py:618:12: ERROR: tf.nn.dropout called without arguments, so automatic fix was disabled. tf.nn.dropout has changed the semantics of the second argument.
+polygen/modules.py:631:13: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+polygen/modules.py:824:19: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+polygen/modules.py:1292:26: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+polygen/modules.py:1322:19: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+--------------------------------------------------------------------------------
+File: polygen/talking_heads_attention.py
+--------------------------------------------------------------------------------
+polygen/talking_heads_attention.py:227:13: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+polygen/talking_heads_attention.py:230:11: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+================================================================================
+Detailed log follows:
+
+================================================================================
+================================================================================
+Input tree: 'polygen/'
+================================================================================
+--------------------------------------------------------------------------------
+Processing file 'polygen/tf_utils.py'
+ outputting to 'polygen_v2/tf_utils.py'
+--------------------------------------------------------------------------------
+
+223:7: INFO: `name` passed to `name_scope`. Because you may be re-entering an existing scope, it is not safe to convert automatically,  the v2 name_scope does not support re-entering scopes by name.
+
+223:7: INFO: Renamed 'tf.name_scope' to 'tf.compat.v1.name_scope'
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Processing file 'polygen/data_utils.py'
+ outputting to 'polygen_v2/data_utils.py'
+--------------------------------------------------------------------------------
+
+82:20: INFO: Renamed 'tf.random_shuffle' to 'tf.random.shuffle'
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Processing file 'polygen/modules.py'
+ outputting to 'polygen_v2/modules.py'
+--------------------------------------------------------------------------------
+
+36:13: INFO: Renamed 'tf.random_uniform' to 'tf.random.uniform'
+57:13: INFO: Renamed 'tf.where' to 'tf.compat.v1.where'
+142:19: INFO: Added keywords to args of function 'tf.nn.conv1d'
+142:19: INFO: Renamed keyword argument for tf.nn.conv1d from value to input
+151:13: INFO: Added keywords to args of function 'tf.nn.conv1d'
+151:13: INFO: Renamed keyword argument for tf.nn.conv1d from value to input
+178:23: INFO: Added keywords to args of function 'tf.nn.conv1d'
+178:23: INFO: Renamed keyword argument for tf.nn.conv1d from value to input
+182:24: INFO: Added keywords to args of function 'tf.nn.conv1d'
+182:24: INFO: Renamed keyword argument for tf.nn.conv1d from value to input
+209:7: INFO: Renamed 'tf.variable_scope' to 'tf.compat.v1.variable_scope'
+213:13: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+213:13: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+215:22: INFO: tf.random_normal_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+215:22: INFO: Renamed 'tf.random_normal_initializer' to 'tf.compat.v1.random_normal_initializer'
+216:11: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+216:11: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+218:22: INFO: tf.random_normal_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+218:22: INFO: Renamed 'tf.random_normal_initializer' to 'tf.compat.v1.random_normal_initializer'
+298:11: INFO: Renamed 'tf.variable_scope' to 'tf.compat.v1.variable_scope'
+338:17: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+338:17: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+340:16: ERROR: tf.nn.dropout called without arguments, so automatic fix was disabled. tf.nn.dropout has changed the semantics of the second argument.
+347:14: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+349:14: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+351:17: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+351:17: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+353:16: ERROR: tf.nn.dropout called without arguments, so automatic fix was disabled. tf.nn.dropout has changed the semantics of the second argument.
+455:11: INFO: Renamed 'tf.variable_scope' to 'tf.compat.v1.variable_scope'
+495:17: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+495:17: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+497:16: ERROR: tf.nn.dropout called without arguments, so automatic fix was disabled. tf.nn.dropout has changed the semantics of the second argument.
+517:19: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+517:19: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+519:18: ERROR: tf.nn.dropout called without arguments, so automatic fix was disabled. tf.nn.dropout has changed the semantics of the second argument.
+526:14: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+528:14: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+530:17: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+530:17: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+532:16: ERROR: tf.nn.dropout called without arguments, so automatic fix was disabled. tf.nn.dropout has changed the semantics of the second argument.
+587:7: INFO: Renamed 'tf.variable_scope' to 'tf.compat.v1.variable_scope'
+592:13: INFO: Renamed 'tf.layers.conv2d' to 'tf.compat.v1.layers.conv2d'
+594:13: INFO: Renamed 'tf.layers.conv3d' to 'tf.compat.v1.layers.conv3d'
+618:12: ERROR: tf.nn.dropout called without arguments, so automatic fix was disabled. tf.nn.dropout has changed the semantics of the second argument.
+631:13: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+631:13: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+681:13: INFO: Renamed 'tf.layers.conv3d' to 'tf.compat.v1.layers.conv3d'
+683:13: INFO: Renamed 'tf.layers.conv2d' to 'tf.compat.v1.layers.conv2d'
+693:10: INFO: Renamed 'tf.layers.max_pooling2d' to 'tf.compat.v1.layers.max_pooling2d'
+699:11: INFO: Renamed 'tf.variable_scope' to 'tf.compat.v1.variable_scope'
+766:31: INFO: tf.glorot_uniform_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+766:31: INFO: Renamed 'tf.glorot_uniform_initializer' to 'tf.compat.v1.glorot_uniform_initializer'
+794:36: INFO: tf.glorot_uniform_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+794:36: INFO: Renamed 'tf.glorot_uniform_initializer' to 'tf.compat.v1.glorot_uniform_initializer'
+796:33: INFO: Renamed 'tf.mod' to 'tf.math.floormod'
+802:36: INFO: tf.glorot_uniform_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+802:36: INFO: Renamed 'tf.glorot_uniform_initializer' to 'tf.compat.v1.glorot_uniform_initializer'
+804:33: INFO: Renamed 'tf.floordiv' to 'tf.math.floordiv'
+811:38: INFO: tf.glorot_uniform_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+811:38: INFO: Renamed 'tf.glorot_uniform_initializer' to 'tf.compat.v1.glorot_uniform_initializer'
+816:24: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+824:19: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+824:19: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+839:11: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+843:27: INFO: tf.zeros_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+843:27: INFO: Renamed 'tf.zeros_initializer' to 'tf.compat.v1.zeros_initializer'
+993:17: INFO: Renamed 'tf.where' to 'tf.compat.v1.where'
+995:19: INFO: Renamed 'tf.floordiv' to 'tf.math.floordiv'
+1094:29: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+1158:36: INFO: tf.glorot_uniform_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+1158:36: INFO: Renamed 'tf.glorot_uniform_initializer' to 'tf.compat.v1.glorot_uniform_initializer'
+1170:29: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+1243:31: INFO: tf.glorot_uniform_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+1243:31: INFO: Renamed 'tf.glorot_uniform_initializer' to 'tf.compat.v1.glorot_uniform_initializer'
+1282:40: INFO: tf.glorot_uniform_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+1282:40: INFO: Renamed 'tf.glorot_uniform_initializer' to 'tf.compat.v1.glorot_uniform_initializer'
+1286:26: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+1292:26: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+1292:26: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+1315:36: INFO: tf.glorot_uniform_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+1315:36: INFO: Renamed 'tf.glorot_uniform_initializer' to 'tf.compat.v1.glorot_uniform_initializer'
+1322:19: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+1322:19: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+1337:11: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+1341:27: INFO: tf.zeros_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+1341:27: INFO: Renamed 'tf.zeros_initializer' to 'tf.compat.v1.zeros_initializer'
+1492:23: INFO: Renamed 'tf.where' to 'tf.compat.v1.where'
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Processing file 'polygen/setup.py'
+ outputting to 'polygen_v2/setup.py'
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Processing file 'polygen/talking_heads_attention.py'
+ outputting to 'polygen_v2/talking_heads_attention.py'
+--------------------------------------------------------------------------------
+
+156:19: INFO: Added keywords to args of function 'tf.nn.conv1d'
+156:19: INFO: Renamed keyword argument for tf.nn.conv1d from value to input
+165:13: INFO: Added keywords to args of function 'tf.nn.conv1d'
+165:13: INFO: Renamed keyword argument for tf.nn.conv1d from value to input
+192:23: INFO: Added keywords to args of function 'tf.nn.conv1d'
+192:23: INFO: Renamed keyword argument for tf.nn.conv1d from value to input
+196:24: INFO: Added keywords to args of function 'tf.nn.conv1d'
+196:24: INFO: Renamed keyword argument for tf.nn.conv1d from value to input
+223:7: INFO: Renamed 'tf.variable_scope' to 'tf.compat.v1.variable_scope'
+227:13: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+227:13: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+229:22: INFO: tf.random_normal_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+229:22: INFO: Renamed 'tf.random_normal_initializer' to 'tf.compat.v1.random_normal_initializer'
+230:11: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+230:11: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+232:22: INFO: tf.random_normal_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+232:22: INFO: Renamed 'tf.random_normal_initializer' to 'tf.compat.v1.random_normal_initializer'
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Processing file 'polygen/model_test.py'
+ outputting to 'polygen_v2/model_test.py'
+--------------------------------------------------------------------------------
+
+44:23: INFO: Renamed 'tf.placeholder' to 'tf.compat.v1.placeholder'
+52:18: INFO: Renamed 'tf.placeholder' to 'tf.compat.v1.placeholder'
+54:23: INFO: Renamed 'tf.placeholder' to 'tf.compat.v1.placeholder'
+56:15: INFO: Renamed 'tf.placeholder' to 'tf.compat.v1.placeholder'
+80:15: INFO: Renamed 'tf.global_variables_initializer' to 'tf.compat.v1.global_variables_initializer'
+93:15: INFO: Renamed 'tf.global_variables_initializer' to 'tf.compat.v1.global_variables_initializer'
+121:15: INFO: Renamed 'tf.global_variables_initializer' to 'tf.compat.v1.global_variables_initializer'
+140:15: INFO: Renamed 'tf.global_variables_initializer' to 'tf.compat.v1.global_variables_initializer'
+--------------------------------------------------------------------------------
+

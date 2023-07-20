@@ -137,13 +137,12 @@ def read_obj_file(obj_file):
         flat_vertices_indices[vertex_name] = flat_vertex_index
         triangle.append(flat_vertex_index)
       flat_triangles.append(triangle)
-
   return np.array(flat_vertices_list, dtype=np.float32), flat_triangles
 
 
 def read_obj(obj_path):
   """Open .obj file from the path provided and read vertices and faces."""
-
+  print(obj_path)
   with open(obj_path) as obj_file:
     return read_obj_file(obj_file)
 
@@ -325,7 +324,32 @@ def process_mesh(vertices, faces, quantization_bits=8):
       'vertices': vertices,
       'faces': faces,
   }
+def process_mesh_trimesh(mesh, quantization_bits=16):
+  """Process mesh vertices and faces."""
 
+  # Transpose so that z-axis is vertical.
+  vertices = mesh.vertices[:, [2, 0, 1]]
+
+  # Translate the vertices so that bounding box is centered at zero.
+  vertices = center_vertices(vertices)
+
+  # Scale the vertices so that the long diagonal of the bounding box is equal
+  # to one.
+  vertices = normalize_vertices_scale(vertices)
+
+  # Quantize and sort vertices, remove resulting duplicates, sort and reindex
+  # faces.
+  faces = mesh.faces
+  vertices, faces, _ = quantize_process_mesh(vertices, faces, quantization_bits=quantization_bits)
+
+  # Flatten faces and add 'new face' = 1 and 'stop' = 0 tokens.
+  faces = flatten_faces(faces)
+
+  # Discard degenerate meshes without faces.
+  return {
+      'vertices': vertices,
+      'faces': faces,
+  }
 
 def load_process_mesh(mesh_obj_path, quantization_bits=8):
   """Load obj file and process."""

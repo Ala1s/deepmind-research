@@ -1,0 +1,57 @@
+TensorFlow 2.0 Upgrade Script
+-----------------------------
+Converted 3 files
+Detected 3 issues that require attention
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+File: old_code_v1/modelInit.py
+--------------------------------------------------------------------------------
+old_code_v1/modelInit.py:8:21: WARNING: Changing dataset.make_one_shot_iterator() to tf.compat.v1.data.make_one_shot_iterator(dataset). Please check this transformation.
+
+old_code_v1/modelInit.py:41:19: WARNING: Changing dataset.make_one_shot_iterator() to tf.compat.v1.data.make_one_shot_iterator(dataset). Please check this transformation.
+
+--------------------------------------------------------------------------------
+File: old_code_v1/meshInit.py
+--------------------------------------------------------------------------------
+old_code_v1/meshInit.py:21:5: WARNING: Changing dataset.make_one_shot_iterator() to tf.compat.v1.data.make_one_shot_iterator(dataset). Please check this transformation.
+
+================================================================================
+Detailed log follows:
+
+================================================================================
+================================================================================
+Input tree: 'old_code_v1/'
+================================================================================
+--------------------------------------------------------------------------------
+Processing file 'old_code_v1/modelInit.py'
+ outputting to 'new_code_v2/modelInit.py'
+--------------------------------------------------------------------------------
+
+8:21: WARNING: Changing dataset.make_one_shot_iterator() to tf.compat.v1.data.make_one_shot_iterator(dataset). Please check this transformation.
+
+41:19: WARNING: Changing dataset.make_one_shot_iterator() to tf.compat.v1.data.make_one_shot_iterator(dataset). Please check this transformation.
+
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Processing file 'old_code_v1/train.py'
+ outputting to 'new_code_v2/train.py'
+--------------------------------------------------------------------------------
+
+8:12: INFO: Renamed 'tf.train.AdamOptimizer' to 'tf.compat.v1.train.AdamOptimizer'
+13:9: INFO: Renamed 'tf.ConfigProto' to 'tf.compat.v1.ConfigProto'
+14:7: INFO: Renamed 'tf.Session' to 'tf.compat.v1.Session'
+16:11: INFO: Renamed 'tf.global_variables_initializer' to 'tf.compat.v1.global_variables_initializer'
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Processing file 'old_code_v1/meshInit.py'
+ outputting to 'new_code_v2/meshInit.py'
+--------------------------------------------------------------------------------
+
+21:5: WARNING: Changing dataset.make_one_shot_iterator() to tf.compat.v1.data.make_one_shot_iterator(dataset). Please check this transformation.
+
+24:5: INFO: Renamed 'tf.Session' to 'tf.compat.v1.Session'
+30:5: INFO: Renamed 'tf.Session' to 'tf.compat.v1.Session'
+--------------------------------------------------------------------------------
+

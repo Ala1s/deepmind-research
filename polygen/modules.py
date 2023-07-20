@@ -20,6 +20,7 @@ import tensorflow.compat.v1 as tf
 from tensorflow.python.framework import function
 import tensorflow_probability as tfp
 
+
 tfd = tfp.distributions
 tfb = tfp.bijectors
 
@@ -243,7 +244,8 @@ class TransformerEncoder(snt.AbstractModule):
                dropout_rate=0.2,
                re_zero=True,
                memory_efficient=False,
-               name='transformer_encoder'):
+               name='transformer_encoder',
+               use_talking_heads=False):
     """Initializes TransformerEncoder.
 
     Args:
@@ -306,6 +308,7 @@ class TransformerEncoder(snt.AbstractModule):
               forget=True if is_training else False,
               name='self_attention'
               )
+        
         else:
           if self.layer_norm:
             res = common_layers.layer_norm(res, name='self_attention')
@@ -367,7 +370,8 @@ class TransformerDecoder(snt.AbstractModule):
                dropout_rate=0.2,
                re_zero=True,
                memory_efficient=False,
-               name='transformer_decoder'):
+               name='transformer_decoder',
+               use_talking_heads=False):
     """Initializes TransformerDecoder.
 
     Args:
@@ -1262,7 +1266,7 @@ class FaceModel(snt.AbstractModule):
       verts_quantized = quantize_verts(vertices, self.quantization_bits)
       for c in range(3):
         vertex_embeddings += snt.Embed(
-            vocab_size=256,
+            vocab_size=4**self.quantization_bits,
             embed_dim=self.embedding_dim,
             initializers={'embeddings': tf.glorot_uniform_initializer},
             densify_gradients=True,
