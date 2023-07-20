@@ -880,7 +880,7 @@ class VertexModel(snt.AbstractModule):
         batch['vertices_flat'][:, :-1],  # Last element not used for preds
         global_context_embedding=global_context,
         sequential_context_embeddings=seq_context,
-        is_training=is_training,cat = True)
+        is_training=is_training,cat = False)
     return pred_dist
 
   def sample(self,
@@ -1400,7 +1400,7 @@ class FaceModel(snt.AbstractModule):
         batch['faces'][:, :-1],
         global_context_embedding=global_context,
         sequential_context_embeddings=seq_context,
-        is_training=is_training, cat = True)
+        is_training=is_training, cat = False)
     return pred_dist
 
   def sample(self,
