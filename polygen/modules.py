@@ -1127,8 +1127,8 @@ class TextToVertexModel(VertexModel):
             self.text_features = snt.Sequential([
                 snt.Embed(existing_vocab=embedding_matrix, trainable=False),
                 snt.BatchFlatten(),
-                snt.Linear(512),
-                snt.Linear(512)
+                # snt.Linear(512),
+                # snt.Linear(512)
             ])
 
 
