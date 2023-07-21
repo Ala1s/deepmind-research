@@ -321,10 +321,31 @@ def quantize_process_mesh(vertices, faces, tris=None, quantization_bits=8):
 
     return vertices, faces, tris
 
+def random_scaling(vertices):
+    x_scale = np.random.uniform(0.75, 1.25)
+    y_scale = np.random.uniform(0.75, 1.25)
+    z_scale = np.random.uniform(0.75, 1.25)
+    vertices[:, 0] = vertices[:, 0]*x_scale
+    vertices[:, 1] = vertices[:, 1]*y_scale
+    vertices[:, 2] = vertices[:, 2]*z_scale
+    # x_max = np.max(vertices[:, 0])
+    # y_max = np.max(vertices[:, 1])
+    # z_max = np.max(vertices[:, 2])
+
+    # x_min = np.min(vertices[:, 0])
+    # y_min = np.min(vertices[:, 1])
+    # z_min = np.min(vertices[:, 2])
+
+    # vertices[:, 0] = vertices[:, 0]/np.sqrt((x_max-x_min)**2+(y_min-y_max)**2+(z_min-z_max)**2)
+    # vertices[:, 1] = vertices[:, 1]/np.sqrt((x_max-x_min)**2+(y_min-y_max)**2+(z_min-z_max)**2)
+    # vertices[:, 2] = vertices[:, 2]/np.sqrt((x_max-x_min)**2+(y_min-y_max)**2+(z_min-z_max)**2)
+
+    return vertices
 
 def process_mesh(vertices, faces, quantization_bits=8):
     """Process mesh vertices and faces."""
 
+    vertices = random_scaling(vertices)
     # Transpose so that z-axis is vertical.
     vertices = vertices[:, [2, 0, 1]]
 
