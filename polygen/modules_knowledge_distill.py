@@ -837,8 +837,7 @@ class VertexModel(snt.AbstractModule):
                    top_k=0,
                    top_p=1.,
                    is_training=False,
-                   cache=None,
-                   cat = True):
+                   cache=None):
     """Outputs categorical dist for quantized vertex coordinates."""
 
     # Embed inputs
@@ -857,9 +856,7 @@ class VertexModel(snt.AbstractModule):
     logits /= temperature
     logits = top_k_logits(logits, top_k)
     logits = top_p_logits(logits, top_p)
-    cat_dist = logits
-    if cat:
-      cat_dist = tfd.Categorical(logits=logits)
+    cat_dist = tfd.Categorical(logits=logits)
     return cat_dist
 
   def _build(self, batch, is_training=False):
@@ -880,7 +877,7 @@ class VertexModel(snt.AbstractModule):
         batch['vertices_flat'][:, :-1],  # Last element not used for preds
         global_context_embedding=global_context,
         sequential_context_embeddings=seq_context,
-        is_training=is_training,cat = False)
+        is_training=is_training)
     return pred_dist
 
   def sample(self,
@@ -891,7 +888,8 @@ class VertexModel(snt.AbstractModule):
              top_k=0,
              top_p=1.,
              recenter_verts=True,
-             only_return_complete=True):
+             only_return_complete=True,
+             is_training=False):
     """Autoregressive sampling with caching.
 
     Args:
@@ -920,7 +918,7 @@ class VertexModel(snt.AbstractModule):
     """
     # Obtain context for decoder
     global_context, seq_context = self._prepare_context(
-        context, is_training=False)
+        context, is_training=is_training)
 
     # num_samples is the minimum value of num_samples and the batch size of
     # context inputs (if present).
@@ -933,7 +931,7 @@ class VertexModel(snt.AbstractModule):
       num_samples = tf.minimum(num_samples, tf.shape(seq_context)[0])
       seq_context = seq_context[:num_samples]
 
-    def _loop_body(i, samples, cache):
+    def _loop_body(i, samples, cache, pred):
       """While-loop body for autoregression calculation."""
       cat_dist = self._create_dist(
           samples,
@@ -942,12 +940,15 @@ class VertexModel(snt.AbstractModule):
           cache=cache,
           temperature=temperature,
           top_k=top_k,
-          top_p=top_p)
+          top_p=top_p,
+          is_training=is_training)
+      print(cat_dist.log_prob(samples).get_shape())
+      pred = tf.concat([pred, cat_dist.log_prob(samples)], axis=1)
       next_sample = cat_dist.sample()
       samples = tf.concat([samples, next_sample], axis=1)
-      return i + 1, samples, cache
+      return i + 1, samples, cache, pred
 
-    def _stopping_cond(i, samples, cache):
+    def _stopping_cond(i, samples, cache,pred):
       """Stopping condition for sampling while-loop."""
       del i, cache  # Unused
       return tf.reduce_any(tf.reduce_all(tf.not_equal(samples, 0), axis=-1))
@@ -956,14 +957,15 @@ class VertexModel(snt.AbstractModule):
     samples = tf.zeros([num_samples, 0], dtype=tf.int32)
     max_sample_length = max_sample_length or self.max_num_input_verts
     cache, cache_shape_invariants = self.decoder.create_init_cache(num_samples)
-    _, v, _ = tf.while_loop(
+    pred = tf.zeros([num_samples, 0])
+    _, v, _, pred2 = tf.while_loop(
         cond=_stopping_cond,
         body=_loop_body,
-        loop_vars=(0, samples, cache),
+        loop_vars=(0, samples, cache, pred),
         shape_invariants=(tf.TensorShape([]), tf.TensorShape([None, None]),
-                          cache_shape_invariants),
+                          cache_shape_invariants, tf.TensorShape([None, None])),
         maximum_iterations=max_sample_length * 3 + 1,
-        back_prop=False,
+        back_prop=is_training,
         parallel_iterations=1)
 
     # Check if samples completed. Samples are complete if the stopping token
@@ -1022,6 +1024,7 @@ class VertexModel(snt.AbstractModule):
         'vertices': vertices,
         'num_vertices': num_vertices,
         'vertices_mask': vertices_mask,
+        'pred': pred2
     }
     return outputs
 
@@ -1341,960 +1344,6 @@ class FaceModel(snt.AbstractModule):
                    top_k=0,
                    top_p=1.,
                    is_training=False,
-                   cache=None,
-                   cat = True):
-    """Outputs categorical dist for vertex indices."""
-
-    # Embed inputs
-    decoder_inputs = self._embed_inputs(
-        faces_long, vertex_embeddings, global_context_embedding)
-
-    # Pass through Transformer decoder
-    if cache is not None:
-      decoder_inputs = decoder_inputs[:, -1:]
-    decoder_outputs = self.decoder(
-        decoder_inputs,
-        cache=cache,
-        sequential_context_embeddings=sequential_context_embeddings,
-        is_training=is_training)
-
-    # Get pointers
-    pred_pointers = self._project_to_pointers(decoder_outputs)
-
-    # Get logits and mask
-    logits = tf.matmul(pred_pointers, vertex_embeddings, transpose_b=True)
-    logits /= tf.sqrt(float(self.embedding_dim))
-    f_verts_mask = tf.pad(
-        vertices_mask, [[0, 0], [2, 0]], constant_values=1.)[:, None]
-    logits *= f_verts_mask
-    logits -= (1. - f_verts_mask) * 1e9
-    logits /= temperature
-    logits = top_k_logits(logits, top_k)
-    logits = top_p_logits(logits, top_p)
-    cat_dist = logits
-    if cat:
-      cat_dist = tfd.Categorical(logits=logits)
-    return cat_dist
-
-  def _build(self, batch, is_training=False):
-    """Pass batch through face model and get log probabilities.
-
-    Args:
-      batch: Dictionary containing:
-        'vertices_dequantized': Tensor of shape [batch_size, num_vertices, 3].
-        'faces': int32 tensor of shape [batch_size, seq_length] with flattened
-          faces.
-        'vertices_mask': float32 tensor with shape
-          [batch_size, num_vertices] that masks padded elements in 'vertices'.
-      is_training: If True, use dropout.
-
-    Returns:
-      pred_dist: tfd.Categorical predictive distribution with batch shape
-          [batch_size, seq_length].
-    """
-    vertex_embeddings, global_context, seq_context = self._prepare_context(
-        batch, is_training=is_training)
-    pred_dist = self._create_dist(
-        vertex_embeddings,
-        batch['vertices_mask'],
-        batch['faces'][:, :-1],
-        global_context_embedding=global_context,
-        sequential_context_embeddings=seq_context,
-        is_training=is_training, cat = False)
-    return pred_dist
-
-  def sample(self,
-             context,
-             max_sample_length=None,
-             temperature=1.,
-             top_k=0,
-             top_p=1.,
-             only_return_complete=True):
-    """Sample from face model using caching.
-
-    Args:
-      context: Dictionary of context, including 'vertices' and 'vertices_mask'.
-        See _prepare_context for details.
-      max_sample_length: Maximum length of sampled vertex sequences. Sequences
-        that do not complete are truncated.
-      temperature: Scalar softmax temperature > 0.
-      top_k: Number of tokens to keep for top-k sampling.
-      top_p: Proportion of probability mass to keep for top-p sampling.
-      only_return_complete: If True, only return completed samples. Otherwise
-        return all samples along with completed indicator.
-
-    Returns:
-      outputs: Output dictionary with fields:
-        'completed': Boolean tensor of shape [num_samples]. If True then
-          corresponding sample completed within max_sample_length.
-        'faces': Tensor of samples with shape [num_samples, num_verts, 3].
-        'num_face_indices': Tensor indicating number of vertices for each
-          example in padded vertex samples.
-    """
-    vertex_embeddings, global_context, seq_context = self._prepare_context(
-        context, is_training=False)
-    num_samples = tf.shape(vertex_embeddings)[0]
-
-    def _loop_body(i, samples, cache):
-      """While-loop body for autoregression calculation."""
-      pred_dist = self._create_dist(
-          vertex_embeddings,
-          context['vertices_mask'],
-          samples,
-          global_context_embedding=global_context,
-          sequential_context_embeddings=seq_context,
-          cache=cache,
-          temperature=temperature,
-          top_k=top_k,
-          top_p=top_p)
-      print("pred_dist_face", pred_dist)
-      next_sample = pred_dist.sample()[:, -1:]
-      samples = tf.concat([samples, next_sample], axis=1)
-      return i + 1, samples, cache
-
-    def _stopping_cond(i, samples, cache):
-      """Stopping conditions for autoregressive calculation."""
-      del i, cache  # Unused
-      return tf.reduce_any(tf.reduce_all(tf.not_equal(samples, 0), axis=-1))
-
-    # While loop sampling with caching
-    samples = tf.zeros([num_samples, 0], dtype=tf.int32)
-    max_sample_length = max_sample_length or self.max_seq_length
-    cache, cache_shape_invariants = self.decoder.create_init_cache(num_samples)
-    _, f, _ = tf.while_loop(
-        cond=_stopping_cond,
-        body=_loop_body,
-        loop_vars=(0, samples, cache),
-        shape_invariants=(tf.TensorShape([]), tf.TensorShape([None, None]),
-                          cache_shape_invariants),
-        back_prop=False,
-        parallel_iterations=1,
-        maximum_iterations=max_sample_length)
-    print("pred_dist_face final", f.get_shape())
-    # Record completed samples
-    complete_samples = tf.reduce_any(tf.equal(f, 0), axis=-1)
-    print("complete_samples_face final", complete_samples.get_shape())
-    # Find number of faces
-    sample_length = tf.shape(f)[-1]
-    # Get largest new face (1) index as stopping point for incomplete samples.
-    max_one_ind = tf.reduce_max(
-        tf.range(sample_length)[None] * tf.cast(tf.equal(f, 1), tf.int32),
-        axis=-1)
-    zero_inds = tf.cast(
-        tf.argmax(tf.cast(tf.equal(f, 0), tf.int32), axis=-1), tf.int32)
-    num_face_indices = tf.where(complete_samples, zero_inds, max_one_ind) + 1
-
-    # Mask faces beyond stopping token with zeros
-    # This mask has a -1 in order to replace the last new face token with zero
-    faces_mask = tf.cast(
-        tf.range(sample_length)[None] < num_face_indices[:, None] - 1, tf.int32)
-    f *= faces_mask
-    # This is the real mask
-    faces_mask = tf.cast(
-        tf.range(sample_length)[None] < num_face_indices[:, None], tf.int32)
-
-    # Pad to maximum size with zeros
-    pad_size = max_sample_length - sample_length
-    f = tf.pad(f, [[0, 0], [0, pad_size]])
-
-    if only_return_complete:
-      f = tf.boolean_mask(f, complete_samples)
-      num_face_indices = tf.boolean_mask(num_face_indices, complete_samples)
-      context = tf.nest.map_structure(
-          lambda x: tf.boolean_mask(x, complete_samples), context)
-      complete_samples = tf.boolean_mask(complete_samples, complete_samples)
-
-    # outputs
-    outputs = {
-        'context': context,
-        'completed': complete_samples,
-        'faces': f,
-        'num_face_indices': num_face_indices,
-    }
-    return outputs
-  def sample_logits(self,
-             context,
-             max_sample_length=None,
-             temperature=1.,
-             top_k=0,
-             top_p=1.,
-             only_return_complete=True):
-    """Sample from face model using caching.
-
-    Args:
-      context: Dictionary of context, including 'vertices' and 'vertices_mask'.
-        See _prepare_context for details.
-      max_sample_length: Maximum length of sampled vertex sequences. Sequences
-        that do not complete are truncated.
-      temperature: Scalar softmax temperature > 0.
-      top_k: Number of tokens to keep for top-k sampling.
-      top_p: Proportion of probability mass to keep for top-p sampling.
-      only_return_complete: If True, only return completed samples. Otherwise
-        return all samples along with completed indicator.
-
-    Returns:
-      outputs: Output dictionary with fields:
-        'completed': Boolean tensor of shape [num_samples]. If True then
-          corresponding sample completed within max_sample_length.
-        'faces': Tensor of samples with shape [num_samples, num_verts, 3].
-        'num_face_indices': Tensor indicating number of vertices for each
-          example in padded vertex samples.
-    """
-    vertex_embeddings, global_context, seq_context = self._prepare_context(
-        context, is_training=False)
-    num_samples = tf.shape(vertex_embeddings)[0]
-
-    def _loop_body(i, samples, cache, pred=None):
-      """While-loop body for autoregression calculation."""
-      pred_dist = self._create_dist(
-          vertex_embeddings,
-          context['vertices_mask'],
-          samples,
-          global_context_embedding=global_context,
-          sequential_context_embeddings=seq_context,
-          cache=cache,
-          temperature=temperature,
-          top_k=top_k,
-          top_p=top_p)
-      print("pred_dist_face", pred_dist)
-      next_sample = pred_dist.sample()[:, -1:]
-      samples = tf.concat([samples, next_sample], axis=1)
-      return i + 1, samples, cache, pred_dist
-
-    def _stopping_cond(i, samples, cache):
-      """Stopping conditions for autoregressive calculation."""
-      del i, cache  # Unused
-      return tf.reduce_any(tf.reduce_all(tf.not_equal(samples, 0), axis=-1))
-
-    # While loop sampling with caching
-    samples = tf.zeros([num_samples, 0], dtype=tf.int32)
-    max_sample_length = max_sample_length or self.max_seq_length
-    cache, cache_shape_invariants = self.decoder.create_init_cache(num_samples)
-    i = 0
-    while(tf.reduce_any(tf.reduce_all(tf.not_equal(samples, 0), axis=-1)) is not None and i < max_sample_length):
-      pred_dist = self._create_dist(
-            vertex_embeddings,
-            context['vertices_mask'],
-            samples,
-            global_context_embedding=global_context,
-            sequential_context_embeddings=seq_context,
-            cache=cache,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p)
-      next_sample = pred_dist.sample()[:, -1:]
-      samples = tf.concat([samples, next_sample], axis=1)
-      i += 1
-    
-    return pred_dist
-  
-class NaiveAutoEncoderFaces(snt.AbstractModule):
-  def __init__(self, n_latent, n_out, name="naive_auto_encoder"):
-    super(NaiveAutoEncoderFaces, self).__init__(name=name)
-    self._n_latent = n_latent
-    self._n_out = n_out
-
-  @snt.reuse_variables
-  def encode(self, input):
-    """Builds the front half of AutoEncoder, inputs -> latents."""
-    w_enc = tf.get_variable("w_enc", shape=[self._n_out, self._n_latent])
-    b_enc = tf.get_variable("b_enc", shape=[self._n_latent])
-    return tf.sigmoid(tf.matmul(input, w_enc) + b_enc)
-
-  @snt.reuse_variables
-  def decode(self, latents):
-    """Builds the back half of AutoEncoder, latents -> reconstruction."""
-    w_rec = tf.get_variable("w_dec", shape=[self._n_latent, self._n_out])
-    b_rec = tf.get_variable("b_dec", shape=[self._n_out])
-    return tf.sigmoid(tf.matmul(latents, w_rec) + b_rec)
-  @snt.reuse_variables
-  def _project_to_pointers(self, inputs):
-    """Projects transformer outputs to pointer vectors."""
-    return tf.layers.dense(
-        inputs,
-        self.embedding_dim,
-        use_bias=True,
-        kernel_initializer=tf.zeros_initializer(),
-        name='project_to_pointers'
-        )
-  @snt.reuse_variables
-  def _prepare_context(self, context, is_training=False):
-    
-    global_context_embedding = None
-    vertex_embeddings = self._embed_vertices(
-        context['vertices'], context['vertices_mask'],
-        is_training=is_training)
-    sequential_context_embeddings = None
-    return (vertex_embeddings, global_context_embedding,
-            sequential_context_embeddings)
-
-  @snt.reuse_variables
-  def _embed_vertices(self, vertices, vertices_mask, is_training=False):
-    """Embeds vertices with transformer encoder."""
-    # num_verts = tf.shape(vertices)[1]
-    if self.use_discrete_vertex_embeddings:
-      vertex_embeddings = 0.
-      verts_quantized = quantize_verts(vertices, self.quantization_bits)
-      for c in range(3):
-        vertex_embeddings += snt.Embed(
-            vocab_size=256,
-            embed_dim=self.embedding_dim,
-            initializers={'embeddings': tf.glorot_uniform_initializer},
-            densify_gradients=True,
-            name='coord_{}'.format(c))(verts_quantized[..., c])
-    else:
-      vertex_embeddings = tf.layers.dense(
-          vertices, self.embedding_dim, use_bias=True, name='vertex_embeddings')
-    vertex_embeddings *= vertices_mask[..., None]
-    
-    
-  def _build(self, batch, is_training=False,temperature=1.,
-                   top_k=0,
-                   top_p=1.,):
-    vertex_embeddings, global_context, seq_context = self._prepare_context(
-        batch, is_training=is_training)
-    """Builds the 'full' AutoEncoder, ie input -> latents -> reconstruction."""
-    latents = self.encode(input)
-    decoder_outputs = self.decode(latents)
-    # Get pointers
-    pred_pointers = self._project_to_pointers(decoder_outputs)
-    vertices_mask  = batch['vertices_mask']
-    
-    # Get logits and mask
-    logits = tf.matmul(pred_pointers, vertex_embeddings, transpose_b=True)
-    logits /= tf.sqrt(float(self.embedding_dim))
-    f_verts_mask = tf.pad(
-        vertices_mask, [[0, 0], [2, 0]], constant_values=1.)[:, None]
-    logits *= f_verts_mask
-    logits -= (1. - f_verts_mask) * 1e9
-    logits /= temperature
-    logits = top_k_logits(logits, top_k)
-    logits = top_p_logits(logits, top_p)
-    return tfd.Categorical(logits=logits)
-  
-import tensorflow as tf
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Layer, Dense, LayerNormalization, GlobalAveragePooling2D
-import tensorflow as tf
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Dense, Layer, LayerNormalization
-
-class MLP(Layer):
-    def __init__(self, hdim=512, out_dim=256):
-        super().__init__()
-        self.hdim = hdim
-        self.out_dim = out_dim
-
-    def call(self, x):
-        x = Dense(self.hdim, activation="linear")(x)
-        x = tf.nn.gelu(x)
-        x = Dense(self.out_dim, activation="linear")(x)
-
-        return x
-
-class MixerLayer(Layer):
-    def __init__(self, hdim=512, image_size=256, n_channels=3):
-        super().__init__()
-
-        self.inp = Input(shape=[n_channels, image_size, image_size])
-        self.MLP1 = MLP(hdim, out_dim=image_size)
-        self.MLP2 = MLP(hdim, out_dim=image_size)
-        self.norm1 = LayerNormalization()
-        self.norm2 = LayerNormalization()
-
-    def call(self, x):
-        y = self.norm1(x)
-        y = tf.transpose(y, [0, 2, 1])
-        out_1 = self.MLP1(y)
-        in_2 = tf.transpose(out_1, [0, 2, 1]) + x
-
-        y = self.norm2(in_2)
-        out_2 = self.MLP2(y) + in_2
-
-        return out_2
-class MLPMixer(Model):
-    def __init__(self, n_classes = 128, depth = 2, patch_size = 4, image_size=256, n_channels=3, hdim=512):
-        super().__init__()
-        self.pp_fc = Dense(image_size)
-        self.n_classes = n_classes
-        self.n_channels = n_channels
-
-        assert (image_size % patch_size) == 0, "Image size must be broken down into integer number of patches."
-        self.n_patches = (image_size**2 / patch_size**2)
-
-        self.mixer_layers = []
-        for _ in range(depth):
-            self.mixer_layers.append(
-                MixerLayer(hdim)
-            )
-        
-        self.gap = GlobalAveragePooling2D()
-        self.head = Dense(n_classes, activation="softmax")
-
-    def call(self, x):
-        x = self.pp_fc(x) # per-patch embedding
-        
-        # pass through N MixerLayers
-        for layer in self.mixer_layers:
-            x = layer(x)
-
-        x = LayerNormalization()(x)
-        x = tf.expand_dims(x, axis=0)
-        x = self.gap(x)
-        out = self.head(x)
-
-        return out  
-  
-
-class MyMLP(snt.AbstractModule):
-
-  def __init__(self,
-               hidden_size=256,
-               fc_size=1024,
-               num_heads=4,
-               layer_norm=True,
-               num_layers=8,
-               dropout_rate=0.2,
-               re_zero=True,
-               memory_efficient=False,
-               name='transformer_decoder'):
-   
-    super(MyMLP, self).__init__(name=name)
-    self.hidden_size = hidden_size
-    self.num_heads = num_heads
-    self.layer_norm = layer_norm
-    self.fc_size = fc_size
-    self.num_layers = num_layers
-    self.dropout_rate = dropout_rate
-    self.re_zero = re_zero
-    self.memory_efficient = memory_efficient
-    self.mlp = snt.nets.MLP(name='mlp', output_sizes=[1024,1024,256])
-
-  def _build(self,
-             inputs,
-             sequential_context_embeddings=None,
-             is_training=False,
-             cache=None):
-    """Builds the model."""
-    input_shape = tf.shape(inputs)
-    inputs = tf.reshape(inputs,[-1,input_shape[2]])
-    outputs = self.mlp(inputs)
-    outputs = tf.reshape(input_shape)
-    return outputs
-  def create_init_cache(self, batch_size):
-    """Creates empty cache dictionary for use in fast decoding."""
-
-    def compute_cache_shape_invariants(tensor):
-      """Helper function to get dynamic shapes for cache tensors."""
-      shape_list = tensor.shape.as_list()
-      if len(shape_list) == 4:
-        return tf.TensorShape(
-            [shape_list[0], shape_list[1], None, shape_list[3]])
-      elif len(shape_list) == 3:
-        return tf.TensorShape([shape_list[0], None, shape_list[2]])
-
-    # Build cache
-    k = common_attention.split_heads(
-        tf.zeros([batch_size, 0, self.hidden_size]), self.num_heads)
-    v = common_attention.split_heads(
-        tf.zeros([batch_size, 0, self.hidden_size]), self.num_heads)
-    cache = [{'k': k, 'v': v} for _ in range(self.num_layers)]
-    shape_invariants = tf.nest.map_structure(
-        compute_cache_shape_invariants, cache)
-    return cache, shape_invariants
-
-class NaiveVertexModel(snt.AbstractModule):
-  """Autoregressive generative model of quantized mesh vertices.
-
-  Operates on flattened vertex sequences with a stopping token:
-
-  [z_0, y_0, x_0, z_1, y_1, x_1, ..., z_n, y_n, z_n, STOP]
-
-  Input vertex coordinates are embedded and tagged with learned coordinate and
-  position indicators. A transformer decoder outputs logits for a quantized
-  vertex distribution.
-  """
-
-  def __init__(self,
-               decoder_config,
-               quantization_bits,
-               class_conditional=False,
-               num_classes=55,
-               max_num_input_verts=2500,
-               use_discrete_embeddings=True,
-               name='vertex_model'):
-    """Initializes VertexModel.
-
-    Args:
-      decoder_config: Dictionary with TransformerDecoder config
-      quantization_bits: Number of quantization used in mesh preprocessing.
-      class_conditional: If True, then condition on learned class embeddings.
-      num_classes: Number of classes to condition on.
-      max_num_input_verts: Maximum number of vertices. Used for learned position
-        embeddings.
-      use_discrete_embeddings: If True, use discrete rather than continuous
-        vertex embeddings.
-      name: Name of variable scope
-    """
-    super(NaiveVertexModel, self).__init__(name=name)
-    self.embedding_dim = decoder_config['hidden_size']
-    self.class_conditional = class_conditional
-    self.num_classes = num_classes
-    self.max_num_input_verts = max_num_input_verts
-    self.quantization_bits = quantization_bits
-    self.use_discrete_embeddings = use_discrete_embeddings
-
-    with self._enter_variable_scope():
-      self.decoder = MyMLP()
-
-  @snt.reuse_variables
-  def _embed_class_label(self, labels):
-    """Embeds class label with learned embedding matrix."""
-    init_dict = {'embeddings': tf.glorot_uniform_initializer}
-    return snt.Embed(
-        vocab_size=self.num_classes,
-        embed_dim=self.embedding_dim,
-        initializers=init_dict,
-        densify_gradients=True,
-        name='class_label')(labels)
-
-  @snt.reuse_variables
-  def _prepare_context(self, context, is_training=False):
-    """Prepare class label context."""
-    if self.class_conditional:
-      global_context_embedding = self._embed_class_label(context['class_label'])
-    else:
-      global_context_embedding = None
-    return global_context_embedding, None
-
-  @snt.reuse_variables
-  def _embed_inputs(self, vertices, global_context_embedding=None):
-    """Embeds flat vertices and adds position and coordinate information."""
-    # Dequantize inputs and get shapes
-    input_shape = tf.shape(vertices)
-    batch_size, seq_length = input_shape[0], input_shape[1]
-
-    # Coord indicators (x, y, z)
-    coord_embeddings = snt.Embed(
-        vocab_size=3,
-        embed_dim=self.embedding_dim,
-        initializers={'embeddings': tf.glorot_uniform_initializer},
-        densify_gradients=True,
-        name='coord_embeddings')(tf.mod(tf.range(seq_length), 3))
-
-    # Position embeddings
-    pos_embeddings = snt.Embed(
-        vocab_size=self.max_num_input_verts,
-        embed_dim=self.embedding_dim,
-        initializers={'embeddings': tf.glorot_uniform_initializer},
-        densify_gradients=True,
-        name='coord_embeddings')(tf.floordiv(tf.range(seq_length), 3))
-
-    # Discrete vertex value embeddings
-    if self.use_discrete_embeddings:
-      vert_embeddings = snt.Embed(
-          vocab_size=2**self.quantization_bits + 1,
-          embed_dim=self.embedding_dim,
-          initializers={'embeddings': tf.glorot_uniform_initializer},
-          densify_gradients=True,
-          name='value_embeddings')(vertices)
-    # Continuous vertex value embeddings
-    else:
-      vert_embeddings = tf.layers.dense(
-          dequantize_verts(vertices[..., None], self.quantization_bits),
-          self.embedding_dim,
-          use_bias=True,
-          name='value_embeddings')
-
-    # Step zero embeddings
-    if global_context_embedding is None:
-      zero_embed = tf.get_variable(
-          'embed_zero', shape=[1, 1, self.embedding_dim])
-      zero_embed_tiled = tf.tile(zero_embed, [batch_size, 1, 1])
-    else:
-      zero_embed_tiled = global_context_embedding[:, None]
-
-    # Aggregate embeddings
-    embeddings = vert_embeddings + (coord_embeddings + pos_embeddings)[None]
-    embeddings = tf.concat([zero_embed_tiled, embeddings], axis=1)
-
-    return embeddings
-
-  @snt.reuse_variables
-  def _project_to_logits(self, inputs):
-    """Projects transformer outputs to logits for predictive distribution."""
-    return tf.layers.dense(
-        inputs,
-        2**self.quantization_bits + 1,  # + 1 for stopping token
-        use_bias=True,
-        kernel_initializer=tf.zeros_initializer(),
-        name='project_to_logits')
-
-  @snt.reuse_variables
-  def _create_dist(self,
-                   vertices,
-                   global_context_embedding=None,
-                   sequential_context_embeddings=None,
-                   temperature=1.,
-                   top_k=0,
-                   top_p=1.,
-                   is_training=False,
-                   cache=None):
-    """Outputs categorical dist for quantized vertex coordinates."""
-
-    # Embed inputs
-    decoder_inputs = self._embed_inputs(vertices, global_context_embedding)
-    if cache is not None:
-      decoder_inputs = decoder_inputs[:, -1:]
-
-    # pass through decoder
-    outputs = self.decoder(
-        decoder_inputs, cache=cache,
-        sequential_context_embeddings=sequential_context_embeddings,
-        is_training=is_training)
-
-    # Get logits and optionally process for sampling
-    logits = self._project_to_logits(outputs)
-    logits /= temperature
-    logits = top_k_logits(logits, top_k)
-    logits = top_p_logits(logits, top_p)
-    cat_dist = tfd.Categorical(logits=logits)
-    return cat_dist
-
-  def _build(self, batch, is_training=False):
-    """Pass batch through vertex model and get log probabilities under model.
-
-    Args:
-      batch: Dictionary containing:
-        'vertices_flat': int32 vertex tensors of shape [batch_size, seq_length].
-      is_training: If True, use dropout.
-
-    Returns:
-      pred_dist: tfd.Categorical predictive distribution with batch shape
-          [batch_size, seq_length].
-    """
-    global_context, seq_context = self._prepare_context(
-        batch, is_training=is_training)
-    pred_dist = self._create_dist(
-        batch['vertices_flat'][:, :-1],  # Last element not used for preds
-        global_context_embedding=global_context,
-        sequential_context_embeddings=seq_context,
-        is_training=is_training)
-    return pred_dist
-
-  def sample(self,
-             num_samples,
-             context=None,
-             max_sample_length=None,
-             temperature=1.,
-             top_k=0,
-             top_p=1.,
-             recenter_verts=True,
-             only_return_complete=True):
-    """Autoregressive sampling with caching.
-
-    Args:
-      num_samples: Number of samples to produce.
-      context: Dictionary of context, such as class labels. See _prepare_context
-        for details.
-      max_sample_length: Maximum length of sampled vertex sequences. Sequences
-        that do not complete are truncated.
-      temperature: Scalar softmax temperature > 0.
-      top_k: Number of tokens to keep for top-k sampling.
-      top_p: Proportion of probability mass to keep for top-p sampling.
-      recenter_verts: If True, center vertex samples around origin. This should
-        be used if model is trained using shift augmentations.
-      only_return_complete: If True, only return completed samples. Otherwise
-        return all samples along with completed indicator.
-
-    Returns:
-      outputs: Output dictionary with fields:
-        'completed': Boolean tensor of shape [num_samples]. If True then
-          corresponding sample completed within max_sample_length.
-        'vertices': Tensor of samples with shape [num_samples, num_verts, 3].
-        'num_vertices': Tensor indicating number of vertices for each example
-          in padded vertex samples.
-        'vertices_mask': Tensor of shape [num_samples, num_verts] that masks
-          corresponding invalid elements in 'vertices'.
-    """
-    # Obtain context for decoder
-    global_context, seq_context = self._prepare_context(
-        context, is_training=False)
-
-    # num_samples is the minimum value of num_samples and the batch size of
-    # context inputs (if present).
-    if global_context is not None:
-      num_samples = tf.minimum(num_samples, tf.shape(global_context)[0])
-      global_context = global_context[:num_samples]
-      if seq_context is not None:
-        seq_context = seq_context[:num_samples]
-    elif seq_context is not None:
-      num_samples = tf.minimum(num_samples, tf.shape(seq_context)[0])
-      seq_context = seq_context[:num_samples]
-
-    def _loop_body(i, samples, cache):
-      """While-loop body for autoregression calculation."""
-      cat_dist = self._create_dist(
-          samples,
-          global_context_embedding=global_context,
-          sequential_context_embeddings=seq_context,
-          cache=cache,
-          temperature=temperature,
-          top_k=top_k,
-          top_p=top_p)
-      next_sample = cat_dist.sample()
-      samples = tf.concat([samples, next_sample], axis=1)
-      return i + 1, samples, cache
-
-    def _stopping_cond(i, samples, cache):
-      """Stopping condition for sampling while-loop."""
-      del i, cache  # Unused
-      return tf.reduce_any(tf.reduce_all(tf.not_equal(samples, 0), axis=-1))
-
-    # Initial values for loop variables
-    samples = tf.zeros([num_samples, 0], dtype=tf.int32)
-    max_sample_length = max_sample_length or self.max_num_input_verts
-    cache, cache_shape_invariants = self.decoder.create_init_cache(num_samples)
-    _, v, _ = tf.while_loop(
-        cond=_stopping_cond,
-        body=_loop_body,
-        loop_vars=(0, samples, cache),
-        shape_invariants=(tf.TensorShape([]), tf.TensorShape([None, None]),
-                          cache_shape_invariants),
-        maximum_iterations=max_sample_length * 3 + 1,
-        back_prop=False,
-        parallel_iterations=1)
-
-    # Check if samples completed. Samples are complete if the stopping token
-    # is produced.
-    completed = tf.reduce_any(tf.equal(v, 0), axis=-1)
-
-    # Get the number of vertices in the sample. This requires finding the
-    # index of the stopping token. For complete samples use to argmax to get
-    # first nonzero index.
-    stop_index_completed = tf.argmax(
-        tf.cast(tf.equal(v, 0), tf.int32), axis=-1, output_type=tf.int32)
-    # For incomplete samples the stopping index is just the maximum index.
-    stop_index_incomplete = (
-        max_sample_length * 3 * tf.ones_like(stop_index_completed))
-    stop_index = tf.where(
-        completed, stop_index_completed, stop_index_incomplete)
-    num_vertices = tf.floordiv(stop_index, 3)
-
-    # Convert to 3D vertices by reshaping and re-ordering x -> y -> z
-    v = v[:, :(tf.reduce_max(num_vertices) * 3)] - 1
-    verts_dequantized = dequantize_verts(v, self.quantization_bits)
-    vertices = tf.reshape(verts_dequantized, [num_samples, -1, 3])
-    vertices = tf.stack(
-        [vertices[..., 2], vertices[..., 1], vertices[..., 0]], axis=-1)
-
-    # Pad samples to max sample length. This is required in order to concatenate
-    # Samples across different replicator instances. Pad with stopping tokens
-    # for incomplete samples.
-    pad_size = max_sample_length - tf.shape(vertices)[1]
-    vertices = tf.pad(vertices, [[0, 0], [0, pad_size], [0, 0]])
-
-    # 3D Vertex mask
-    vertices_mask = tf.cast(
-        tf.range(max_sample_length)[None] < num_vertices[:, None], tf.float32)
-
-    if recenter_verts:
-      vert_max = tf.reduce_max(
-          vertices - 1e10 * (1. - vertices_mask)[..., None], axis=1,
-          keepdims=True)
-      vert_min = tf.reduce_min(
-          vertices + 1e10 * (1. - vertices_mask)[..., None], axis=1,
-          keepdims=True)
-      vert_centers = 0.5 * (vert_max + vert_min)
-      vertices -= vert_centers
-    vertices *= vertices_mask[..., None]
-
-    if only_return_complete:
-      vertices = tf.boolean_mask(vertices, completed)
-      num_vertices = tf.boolean_mask(num_vertices, completed)
-      vertices_mask = tf.boolean_mask(vertices_mask, completed)
-      completed = tf.boolean_mask(completed, completed)
-
-    # Outputs
-    outputs = {
-        'completed': completed,
-        'vertices': vertices,
-        'num_vertices': num_vertices,
-        'vertices_mask': vertices_mask,
-    }
-    return outputs
-
-
-class NaiveFaceModel(snt.AbstractModule):
-  """Autoregressive generative model of n-gon meshes.
-
-  Operates on sets of input vertices as well as flattened face sequences with
-  new face and stopping tokens:
-
-  [f_0^0, f_0^1, f_0^2, NEW, f_1^0, f_1^1, ..., STOP]
-
-  Input vertices are encoded using a Transformer encoder.
-
-  Input face sequences are embedded and tagged with learned position indicators,
-  as well as their corresponding vertex embeddings. A transformer decoder
-  outputs a pointer which is compared to each vertex embedding to obtain a
-  distribution over vertex indices.
-  """
-
-  def __init__(self,
-               encoder_config,
-               decoder_config,
-               class_conditional=True,
-               num_classes=55,
-               decoder_cross_attention=True,
-               use_discrete_vertex_embeddings=True,
-               quantization_bits=8,
-               max_seq_length=5000,
-               name='face_model'):
-    """Initializes FaceModel.
-
-    Args:
-      encoder_config: Dictionary with TransformerEncoder config.
-      decoder_config: Dictionary with TransformerDecoder config.
-      class_conditional: If True, then condition on learned class embeddings.
-      num_classes: Number of classes to condition on.
-      decoder_cross_attention: If True, the use cross attention from decoder
-        querys into encoder outputs.
-      use_discrete_vertex_embeddings: If True, use discrete vertex embeddings.
-      quantization_bits: Number of quantization bits for discrete vertex
-        embeddings.
-      max_seq_length: Maximum face sequence length. Used for learned position
-        embeddings.
-      name: Name of variable scope
-    """
-    super(NaiveFaceModel, self).__init__(name=name)
-    self.embedding_dim = decoder_config['hidden_size']
-    self.class_conditional = class_conditional
-    self.num_classes = num_classes
-    self.max_seq_length = max_seq_length
-    self.decoder_cross_attention = decoder_cross_attention
-    self.use_discrete_vertex_embeddings = use_discrete_vertex_embeddings
-    self.quantization_bits = quantization_bits
-
-    with self._enter_variable_scope():
-      self.decoder =  MyMLP()
-      self.encoder =  MyMLP()
-  @snt.reuse_variables
-  def _embed_class_label(self, labels):
-    """Embeds class label with learned embedding matrix."""
-    init_dict = {'embeddings': tf.glorot_uniform_initializer}
-    return snt.Embed(
-        vocab_size=self.num_classes,
-        embed_dim=self.embedding_dim,
-        initializers=init_dict,
-        densify_gradients=True,
-        name='class_label')(labels)
-
-  @snt.reuse_variables
-  def _prepare_context(self, context, is_training=False):
-    """Prepare class label and vertex context."""
-    if self.class_conditional:
-      global_context_embedding = self._embed_class_label(context['class_label'])
-    else:
-      global_context_embedding = None
-    vertex_embeddings = self._embed_vertices(
-        context['vertices'], context['vertices_mask'],
-        is_training=is_training)
-    if self.decoder_cross_attention:
-      sequential_context_embeddings = (
-          vertex_embeddings *
-          tf.pad(context['vertices_mask'], [[0, 0], [2, 0]],
-                 constant_values=1)[..., None])
-    else:
-      sequential_context_embeddings = None
-    return (vertex_embeddings, global_context_embedding,
-            sequential_context_embeddings)
-
-  @snt.reuse_variables
-  def _embed_vertices(self, vertices, vertices_mask, is_training=False):
-    """Embeds vertices with transformer encoder."""
-    # num_verts = tf.shape(vertices)[1]
-    if self.use_discrete_vertex_embeddings:
-      vertex_embeddings = 0.
-      verts_quantized = quantize_verts(vertices, self.quantization_bits)
-      for c in range(3):
-        vertex_embeddings += snt.Embed(
-            vocab_size=256,
-            embed_dim=self.embedding_dim,
-            initializers={'embeddings': tf.glorot_uniform_initializer},
-            densify_gradients=True,
-            name='coord_{}'.format(c))(verts_quantized[..., c])
-    else:
-      vertex_embeddings = tf.layers.dense(
-          vertices, self.embedding_dim, use_bias=True, name='vertex_embeddings')
-    vertex_embeddings *= vertices_mask[..., None]
-
-    # Pad vertex embeddings with learned embeddings for stopping and new face
-    # tokens
-    stopping_embeddings = tf.get_variable(
-        'stopping_embeddings', shape=[1, 2, self.embedding_dim])
-    stopping_embeddings = tf.tile(stopping_embeddings,
-                                  [tf.shape(vertices)[0], 1, 1])
-    vertex_embeddings = tf.concat(
-        [stopping_embeddings, vertex_embeddings], axis=1)
-
-    # Pass through Transformer encoder
-    vertex_embeddings = self.encoder(vertex_embeddings, is_training=is_training)
-    return vertex_embeddings
-
-  @snt.reuse_variables
-  def _embed_inputs(self, faces_long, vertex_embeddings,
-                    global_context_embedding=None):
-    """Embeds face sequences and adds within and between face positions."""
-
-    # Face value embeddings are gathered vertex embeddings
-    face_embeddings = tf.gather(vertex_embeddings, faces_long, batch_dims=1)
-
-    # Position embeddings
-    pos_embeddings = snt.Embed(
-        vocab_size=self.max_seq_length,
-        embed_dim=self.embedding_dim,
-        initializers={'embeddings': tf.glorot_uniform_initializer},
-        densify_gradients=True,
-        name='coord_embeddings')(tf.range(tf.shape(faces_long)[1]))
-
-    # Step zero embeddings
-    batch_size = tf.shape(face_embeddings)[0]
-    if global_context_embedding is None:
-      zero_embed = tf.get_variable(
-          'embed_zero', shape=[1, 1, self.embedding_dim])
-      zero_embed_tiled = tf.tile(zero_embed, [batch_size, 1, 1])
-    else:
-      zero_embed_tiled = global_context_embedding[:, None]
-
-    # Aggregate embeddings
-    embeddings = face_embeddings + pos_embeddings[None]
-    embeddings = tf.concat([zero_embed_tiled, embeddings], axis=1)
-
-    return embeddings
-
-  @snt.reuse_variables
-  def _project_to_pointers(self, inputs):
-    """Projects transformer outputs to pointer vectors."""
-    return tf.layers.dense(
-        inputs,
-        self.embedding_dim,
-        use_bias=True,
-        kernel_initializer=tf.zeros_initializer(),
-        name='project_to_pointers'
-        )
-
-  @snt.reuse_variables
-  def _create_dist(self,
-                   vertex_embeddings,
-                   vertices_mask,
-                   faces_long,
-                   global_context_embedding=None,
-                   sequential_context_embeddings=None,
-                   temperature=1.,
-                   top_k=0,
-                   top_p=1.,
-                   is_training=False,
                    cache=None):
     """Outputs categorical dist for vertex indices."""
 
@@ -2359,7 +1408,8 @@ class NaiveFaceModel(snt.AbstractModule):
              temperature=1.,
              top_k=0,
              top_p=1.,
-             only_return_complete=True):
+             only_return_complete=True,
+             is_training=False):
     """Sample from face model using caching.
 
     Args:
@@ -2382,10 +1432,10 @@ class NaiveFaceModel(snt.AbstractModule):
           example in padded vertex samples.
     """
     vertex_embeddings, global_context, seq_context = self._prepare_context(
-        context, is_training=False)
+        context, is_training=is_training)
     num_samples = tf.shape(vertex_embeddings)[0]
 
-    def _loop_body(i, samples, cache):
+    def _loop_body(i, samples, cache, pred):
       """While-loop body for autoregression calculation."""
       pred_dist = self._create_dist(
           vertex_embeddings,
@@ -2396,13 +1446,14 @@ class NaiveFaceModel(snt.AbstractModule):
           cache=cache,
           temperature=temperature,
           top_k=top_k,
-          top_p=top_p)
-      print("pred_dist_face", pred_dist)
+          top_p=top_p,
+          is_training=is_training)
+      pred = tf.concat([pred, pred_dist.log_prob(samples)[:, -1:]], axis=1)
       next_sample = pred_dist.sample()[:, -1:]
       samples = tf.concat([samples, next_sample], axis=1)
-      return i + 1, samples, cache
+      return i + 1, samples, cache, pred
 
-    def _stopping_cond(i, samples, cache):
+    def _stopping_cond(i, samples, cache, pred):
       """Stopping conditions for autoregressive calculation."""
       del i, cache  # Unused
       return tf.reduce_any(tf.reduce_all(tf.not_equal(samples, 0), axis=-1))
@@ -2411,19 +1462,20 @@ class NaiveFaceModel(snt.AbstractModule):
     samples = tf.zeros([num_samples, 0], dtype=tf.int32)
     max_sample_length = max_sample_length or self.max_seq_length
     cache, cache_shape_invariants = self.decoder.create_init_cache(num_samples)
-    _, f, _ = tf.while_loop(
+    pred = tf.zeros([num_samples, 0])
+    _, f, _, pred2 = tf.while_loop(
         cond=_stopping_cond,
         body=_loop_body,
-        loop_vars=(0, samples, cache),
+        loop_vars=(0, samples, cache, pred),
         shape_invariants=(tf.TensorShape([]), tf.TensorShape([None, None]),
-                          cache_shape_invariants),
-        back_prop=False,
+                          cache_shape_invariants,tf.TensorShape([None, None])),
+        back_prop=is_training,
         parallel_iterations=1,
         maximum_iterations=max_sample_length)
-    print("pred_dist_face final", f.get_shape())
+
     # Record completed samples
     complete_samples = tf.reduce_any(tf.equal(f, 0), axis=-1)
-    print("complete_samples_face final", complete_samples.get_shape())
+
     # Find number of faces
     sample_length = tf.shape(f)[-1]
     # Get largest new face (1) index as stopping point for incomplete samples.
@@ -2460,81 +1512,6 @@ class NaiveFaceModel(snt.AbstractModule):
         'completed': complete_samples,
         'faces': f,
         'num_face_indices': num_face_indices,
+        'pred': pred2
     }
     return outputs
-  def sample_logits(self,
-             context,
-             max_sample_length=None,
-             temperature=1.,
-             top_k=0,
-             top_p=1.,
-             only_return_complete=True):
-    """Sample from face model using caching.
-
-    Args:
-      context: Dictionary of context, including 'vertices' and 'vertices_mask'.
-        See _prepare_context for details.
-      max_sample_length: Maximum length of sampled vertex sequences. Sequences
-        that do not complete are truncated.
-      temperature: Scalar softmax temperature > 0.
-      top_k: Number of tokens to keep for top-k sampling.
-      top_p: Proportion of probability mass to keep for top-p sampling.
-      only_return_complete: If True, only return completed samples. Otherwise
-        return all samples along with completed indicator.
-
-    Returns:
-      outputs: Output dictionary with fields:
-        'completed': Boolean tensor of shape [num_samples]. If True then
-          corresponding sample completed within max_sample_length.
-        'faces': Tensor of samples with shape [num_samples, num_verts, 3].
-        'num_face_indices': Tensor indicating number of vertices for each
-          example in padded vertex samples.
-    """
-    vertex_embeddings, global_context, seq_context = self._prepare_context(
-        context, is_training=False)
-    num_samples = tf.shape(vertex_embeddings)[0]
-
-    def _loop_body(i, samples, cache, pred=None):
-      """While-loop body for autoregression calculation."""
-      pred_dist = self._create_dist(
-          vertex_embeddings,
-          context['vertices_mask'],
-          samples,
-          global_context_embedding=global_context,
-          sequential_context_embeddings=seq_context,
-          cache=cache,
-          temperature=temperature,
-          top_k=top_k,
-          top_p=top_p)
-      print("pred_dist_face", pred_dist)
-      next_sample = pred_dist.sample()[:, -1:]
-      samples = tf.concat([samples, next_sample], axis=1)
-      return i + 1, samples, cache, pred_dist
-
-    def _stopping_cond(i, samples, cache):
-      """Stopping conditions for autoregressive calculation."""
-      del i, cache  # Unused
-      return tf.reduce_any(tf.reduce_all(tf.not_equal(samples, 0), axis=-1))
-
-    # While loop sampling with caching
-    samples = tf.zeros([num_samples, 0], dtype=tf.int32)
-    max_sample_length = max_sample_length or self.max_seq_length
-    cache, cache_shape_invariants = self.decoder.create_init_cache(num_samples)
-    i = 0
-    while(tf.reduce_any(tf.reduce_all(tf.not_equal(samples, 0), axis=-1)) is not None and i < max_sample_length):
-      pred_dist = self._create_dist(
-            vertex_embeddings,
-            context['vertices_mask'],
-            samples,
-            global_context_embedding=global_context,
-            sequential_context_embeddings=seq_context,
-            cache=cache,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p)
-      next_sample = pred_dist.sample()[:, -1:]
-      samples = tf.concat([samples, next_sample], axis=1)
-      i += 1
-    
-    return pred_dist
-  
