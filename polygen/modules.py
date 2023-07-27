@@ -1096,7 +1096,7 @@ class TextToVertexModel(VertexModel):
     def __init__(self,
                  decoder_config,
                  quantization_bits,
-                 tokenizer=None,
+                 vocab,
                  path_to_embeddings = "glove.6B/glove.6B.100d.txt",
                  embedding_dims = 100,
                  use_discrete_embeddings=True,
@@ -1123,7 +1123,7 @@ class TextToVertexModel(VertexModel):
 
         with self._enter_variable_scope():
 
-            embedding_matrix = self.load_pretrained_embeddings(tokenizer, path_to_embeddings, embedding_dims)
+            embedding_matrix = self.load_pretrained_embeddings(vocab, path_to_embeddings, embedding_dims)
             self.text_features = snt.Sequential([
                 snt.Embed(existing_vocab=embedding_matrix, trainable=False),
                 snt.BatchFlatten(),
@@ -1133,7 +1133,7 @@ class TextToVertexModel(VertexModel):
 
 
 
-    def load_pretrained_embeddings(self, tokenizer, path_to_embeddings, embedding_dim):
+    def load_pretrained_embeddings(self, vocab, path_to_embeddings, embedding_dim):
 
         embeddings_index = {}
         with open(path_to_embeddings, 'r', encoding="utf8") as f:
@@ -1144,13 +1144,13 @@ class TextToVertexModel(VertexModel):
 
         print("Found %s word vectors." % len(embeddings_index))
 
-        num_tokens = len(tokenizer.word_index) + 2
+        num_tokens = len(vocab)
         hits = 0
         misses = 0
 
         # Prepare embedding matrix
         embedding_matrix = np.zeros((num_tokens, embedding_dim))
-        for word, i in tokenizer.word_index.items():
+        for word, i in vocab.items():
             embedding_vector = embeddings_index.get(word)
             if embedding_vector is not None:
                 # Words not found in embedding index will be all-zeros.
