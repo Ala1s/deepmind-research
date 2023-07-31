@@ -108,42 +108,6 @@ def make_face_model_dataset(
 
     return ds.map(_face_model_map_fn)
 
-#
-# def read_obj_file(obj_file):
-#     """Read vertices and faces from already opened file."""
-#     vertex_list = []
-#     flat_vertices_list = []
-#     flat_vertices_indices = {}
-#     flat_triangles = []
-#
-#     for line in obj_file:
-#         tokens = line.split()
-#         if not tokens:
-#             continue
-#         line_type = tokens[0]
-#         # We skip lines not starting with v or f.
-#         if line_type == 'v':
-#             vertex_list.append([float(x) for x in tokens[1:]])
-#         elif line_type == 'f':
-#             triangle = []
-#             for i in range(len(tokens) - 1):
-#                 vertex_name = tokens[i + 1]
-#                 if vertex_name in flat_vertices_indices:
-#                     triangle.append(flat_vertices_indices[vertex_name])
-#                     continue
-#                 flat_vertex = []
-#                 for index in six.ensure_str(vertex_name).split('/'):
-#                     if not index:
-#                         continue
-#                     # obj triangle indices are 1 indexed, so subtract 1 here.
-#                     flat_vertex += vertex_list[int(index) - 1]
-#                 flat_vertex_index = len(flat_vertices_list)
-#                 flat_vertices_list.append(flat_vertex)
-#                 flat_vertices_indices[vertex_name] = flat_vertex_index
-#                 triangle.append(flat_vertex_index)
-#             flat_triangles.append(triangle)
-#
-#     return np.array(flat_vertices_list, dtype=np.float32), flat_triangles
 
 def read_obj_file(obj_file):
     vertices = []
@@ -328,17 +292,6 @@ def random_scaling(vertices):
     vertices[:, 0] = vertices[:, 0]*x_scale
     vertices[:, 1] = vertices[:, 1]*y_scale
     vertices[:, 2] = vertices[:, 2]*z_scale
-    # x_max = np.max(vertices[:, 0])
-    # y_max = np.max(vertices[:, 1])
-    # z_max = np.max(vertices[:, 2])
-
-    # x_min = np.min(vertices[:, 0])
-    # y_min = np.min(vertices[:, 1])
-    # z_min = np.min(vertices[:, 2])
-
-    # vertices[:, 0] = vertices[:, 0]/np.sqrt((x_max-x_min)**2+(y_min-y_max)**2+(z_min-z_max)**2)
-    # vertices[:, 1] = vertices[:, 1]/np.sqrt((x_max-x_min)**2+(y_min-y_max)**2+(z_min-z_max)**2)
-    # vertices[:, 2] = vertices[:, 2]/np.sqrt((x_max-x_min)**2+(y_min-y_max)**2+(z_min-z_max)**2)
 
     return vertices
 
@@ -369,24 +322,6 @@ def process_mesh(vertices, faces, quantization_bits=8):
         'vertices': vertices,
         'faces': faces,
     }
-
-
-def process_mesh_trimesh(mesh, quantization_bits=8):
-    """Process mesh vertices and faces."""
-    # Transpose so that z-axis is vertical.
-    vertices = mesh.vertices[:, [2, 0, 1]]
-    # Translate the vertices so that bounding box is centered at zero.
-    vertices = center_vertices(vertices)
-    # Scale the vertices so that the long diagonal of the bounding box is equal
-    # to one.
-    vertices = normalize_vertices_scale(vertices)
-    # Quantize and sort vertices, remove resulting duplicates, sort and reindex faces.
-    vertices, faces, _ = quantize_process_mesh(vertices, mesh.faces, quantization_bits=quantization_bits)
-    # Flatten faces and add 'new face' = 1 and 'stop' = 0 tokens.
-    faces = flatten_faces(faces)
-    # Discard degenerate meshes without faces.
-    return {'vertices': vertices,
-            'faces': faces, }
 
 
 def load_process_mesh(mesh_obj_path, quantization_bits=8):
